@@ -1,9 +1,8 @@
 import './App.css';
-
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { FaceLandmarker, FaceLandmarkerOptions, FilesetResolver } from "@mediapipe/tasks-vision";
 import { Color, Euler, Matrix4 } from 'three';
-import { Canvas, useFrame, useGraph } from '@react-three/fiber';
+import { Canvas, useFrame, useGraph, useThree } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import { useDropzone } from 'react-dropzone';
 
@@ -25,16 +24,25 @@ const options: FaceLandmarkerOptions = {
   outputFacialTransformationMatrixes: true,
 };
 
-function Avatar({ url }: { url: string }) {
+function Avatar({ url, brightness }: { url: string; brightness: number }) {
   const { scene } = useGLTF(url);
   const { nodes } = useGraph(scene);
+  const { gl } = useThree();
 
   useEffect(() => {
+    headMesh = [];
     if (nodes.Wolf3D_Head) headMesh.push(nodes.Wolf3D_Head);
     if (nodes.Wolf3D_Teeth) headMesh.push(nodes.Wolf3D_Teeth);
     if (nodes.Wolf3D_Beard) headMesh.push(nodes.Wolf3D_Beard);
     if (nodes.Wolf3D_Avatar) headMesh.push(nodes.Wolf3D_Avatar);
     if (nodes.Wolf3D_Head_Custom) headMesh.push(nodes.Wolf3D_Head_Custom);
+
+    // Adjust material properties for brightness
+    scene.traverse((object: any) => {
+      if (object.isMesh) {
+        object.material.toneMapped = false;
+      }
+    });
   }, [nodes, url]);
 
   useFrame(() => {
@@ -48,10 +56,17 @@ function Avatar({ url }: { url: string }) {
         });
       });
 
-      nodes.Head.rotation.set(rotation.x, rotation.y, rotation.z);
-      nodes.Neck.rotation.set(rotation.x / 5 + 0.3, rotation.y / 5, rotation.z / 5);
-      nodes.Spine2.rotation.set(rotation.x / 10, rotation.y / 10, rotation.z / 10);
+      if (nodes.Head) nodes.Head.rotation.set(rotation.x, rotation.y, rotation.z);
+      if (nodes.Neck) nodes.Neck.rotation.set(rotation.x / 5 + 0.3, rotation.y / 5, rotation.z / 5);
+      if (nodes.Spine2) nodes.Spine2.rotation.set(rotation.x / 10, rotation.y / 10, rotation.z / 10);
     }
+
+    // Apply brightness to all materials
+    scene.traverse((object: any) => {
+      if (object.isMesh) {
+        object.material.emissiveIntensity = brightness;
+      }
+    });
   });
 
   return <primitive object={scene} position={[0, -1.75, 3]} />
@@ -59,6 +74,7 @@ function Avatar({ url }: { url: string }) {
 
 function App() {
   const [url, setUrl] = useState<string>("https://models.readyplayer.me/66b6f3137313deab56801afd.glb?morphTargets=ARKit&textureAtlas=1024");
+  const [brightness, setBrightness] = useState<number>(1);
   const { getRootProps } = useDropzone({
     onDrop: files => {
       const file = files[0];
@@ -101,8 +117,12 @@ function App() {
     window.requestAnimationFrame(predict);
   }
 
-  const handleOnChange = (event: any) => {
+  const handleOnChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setUrl(`${event.target.value}?morphTargets=ARKit&textureAtlas=1024`);
+  }
+
+  const handleBrightnessChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setBrightness(Number(event.target.value));
   }
 
   useEffect(() => {
@@ -115,15 +135,28 @@ function App() {
         <p>Drag & drop RPM avatar GLB file here</p>
       </div>
       <input className='url' type="text" placeholder="Paste RPM avatar URL" onChange={handleOnChange} />
+      <div>
+        <label htmlFor="brightness">Avatar Brightness: </label>
+        <input 
+          type="range" 
+          id="brightness" 
+          name="brightness"
+          min="0" 
+          max="2" 
+          step="0.1"
+          value={brightness} 
+          onChange={handleBrightnessChange}
+        />
+      </div>
       <video className='camera-feed' id="video" autoPlay></video>
       <Canvas style={{ height: 400 }} camera={{ fov: 25 }} shadows>
         <ambientLight intensity={0.5} />
         <pointLight position={[1, 1, 1]} color={new Color(1, 1, 0)} intensity={0.5} castShadow />
         <pointLight position={[-1, 0, 1]} color={new Color(1, 0, 0)} intensity={0.5} castShadow />
         <pointLight position={[0, 0, 10]} intensity={0.5} castShadow />
-        <Avatar url={url} />
+        <Avatar url={url} brightness={brightness} />
       </Canvas>
-      <img className='logo' src="./logo.png" />
+      <img className='logo' src="./logo.png" alt="Logo" />
     </div>
   );
 }
